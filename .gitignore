@@ -1,0 +1,29 @@
+# 数据文件（作业要求：仓库中不能有数据文件）
+/data/
+*.csv
+*.zip
+*.parquet
+*.feather
+
+# 密钥（绝不能上传）
+.env
+*.key
+*.pem
+*.secret
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Notebook 检查点
+.ipynb_checkpoints/
+
+# Word 临时文件
+~$*
+
+# IDE
+.idea/
+.vscode/
