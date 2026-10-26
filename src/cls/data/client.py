@@ -7,7 +7,7 @@ WEIGHT_BUDGET = 2000
 
 
 def request(path, params=None, max_retries=3):
-
+    #输入后续网址，参数，请求次数，返回回复
     url = f"{BASE}{path}"
 
     for _ in range(max_retries):

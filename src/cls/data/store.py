@@ -18,17 +18,14 @@ def funding_path(data_dir, symbol):
 
 
 def _merge(existing, new, key):
-    """纯函数：纵向合并 + 按 key 去重 + 排序（幂等的核心，可离线测试）。"""
+    #输入老dataframe和新的部分，合成之后按照key的值判断并去除重复，再以key(时间)排序并重设编号。
     combined = pd.concat([existing, new], ignore_index=True)
     combined = combined.drop_duplicates(subset=[key])
     return combined.sort_values(key).reset_index(drop=True)
 
 
 def update_klines(symbols, interval, start, data_dir="data"):
-    """增量更新 K 线：只补本地缺失部分，重复执行结果不变（幂等）。
-
-    start : 首次拉取的起点（本地无数据时才用到）。
-    """
+    #输入合约名，区间，起始点，数据文件夹名，调用merge去重之后建文件夹(目前还没有实现时间分页功能)
     if isinstance(symbols, str):
         symbols = [symbols]
     step = pd.Timedelta(interval)
@@ -56,7 +53,7 @@ def update_klines(symbols, interval, start, data_dir="data"):
 
 
 def update_funding(symbols, start, data_dir="data"):
-    """增量更新资金费率，逻辑同 update_klines。"""
+    #输入合约名，起始点，数据文件夹名，调用merge去重之后建文件夹(目前还没有实现时间分页功能)
     if isinstance(symbols, str):
         symbols = [symbols]
     now = pd.Timestamp.now(tz="UTC")

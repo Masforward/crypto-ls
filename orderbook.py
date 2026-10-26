@@ -5,24 +5,25 @@ from src.cls.data.client import request
 
 
 def fetch_depth(symbol, limit=20):
+    #输入合约名，调出当前订单簿深度数据。
     r = request("/fapi/v1/depth", params={"symbol": symbol, "limit": limit})
     return r.json()
 
 
 def depth_to_frame(d):
-    """把 bids/asks 拼成 side, price, qty 三列的长表。"""
-    bids = pd.DataFrame(d["bids"], columns=["price", "qty"])
+    #输入d，把 bids/asks 拼成买卖方，价格，数量三列的长表。一般的df就从这里来
+    bids = pd.DataFrame(d["bids"], columns=["price", "qty"]) #bids是个有两个字典的列表
     bids["side"] = "buy"
     asks = pd.DataFrame(d["asks"], columns=["price", "qty"])
     asks["side"] = "sell"
     df = pd.concat([bids, asks], ignore_index=True)
     df["price"] = df["price"].astype(float)
     df["qty"] = df["qty"].astype(float)
-    return df[["side", "price", "qty"]]
+    return df[["side", "price", "qty"]] #调序
 
 
 def spread_metrics(df):
-    """买一、卖一、中间价、价差（绝对 + 基点）。"""
+    #买一、卖一、中间价、价差（绝对 + 基点）。
     best_bid = df[df["side"] == "buy"]["price"].max()
     best_ask = df[df["side"] == "sell"]["price"].min()
     mid = (best_bid + best_ask) / 2
@@ -33,7 +34,7 @@ def spread_metrics(df):
 
 
 def orderbook_imbalance(df, levels=5):
-    """前 levels 档买卖量失衡：(买量 − 卖量) ÷ (买量 + 卖量)。"""
+    # 输入df和档位，前 levels 档买卖量失衡：(买量 − 卖量) ÷ (买量 + 卖量)。
     bids = df[df["side"] == "buy"].sort_values("price", ascending=False)
     asks = df[df["side"] == "sell"].sort_values("price", ascending=True)
     bid_qty = bids.head(levels)["qty"].sum()
@@ -73,7 +74,7 @@ def simulate_market_buy(df, notional=100_000):
 
 
 def analyze(symbol):
-    """对一个币做完整分析：价差 + 失衡 + 市价买入滑点。"""
+    # 对一个币做完整分析：价差 + 失衡 + 市价买入滑点。
     d = fetch_depth(symbol, limit=20)
     df = depth_to_frame(d)
     m = spread_metrics(df)
@@ -85,8 +86,3 @@ def analyze(symbol):
     print(f"  中间价 {m['mid']}, 价差 {m['spread_bps']:.2f} bps, 失衡 {imb:.4f}")
     print(f"  市价买入 10 万 USDT → 平均成交价 {avg_price:.4f}, "
           f"滑点 {slippage_bps:.2f} bps, 买到 {total_qty:.6f}")
-
-
-if __name__ == "__main__":
-    analyze("BTCUSDT")
-    analyze("1000PEPEUSDT")   # 换一个流动性差的小市值币做对比
