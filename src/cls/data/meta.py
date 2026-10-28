@@ -54,6 +54,17 @@ def _expected_count(onboard_date, year, month, interval="5m", end=None):
     return int((month_end - start) / step)
 
 
+def _effective_onboard(onboard, sym_dir):
+    # 返回币的真实上市时间：min(onboardDate, 数据实际起点)。
+    # 合约变更币的 onboardDate 是"合约变更时间"（晚于真实上市），
+    # 用数据实际起点（最早月的 min open_time）修正，避免 expected 算少。
+    files = sorted(f for f in os.listdir(sym_dir) if f.endswith(".parquet"))
+    if not files:
+        return onboard
+    first = pd.read_parquet(os.path.join(sym_dir, files[0]))
+    return min(onboard, first["open_time"].min())
+
+
 def check_coverage(data_dir=None, interval="5m"):
     """对每个币每个月，计算应有根数 vs 实有根数，写 coverage_5m.parquet。
 
@@ -68,10 +79,10 @@ def check_coverage(data_dir=None, interval="5m"):
     rows = []
     for _, r in symbols.iterrows():
         symbol = r["symbol"]
-        onboard = r["onboard_date"]
         sym_dir = os.path.join(klines_root, symbol)
         if not os.path.isdir(sym_dir):
             continue
+        onboard = _effective_onboard(r["onboard_date"], sym_dir)
         for fname in sorted(os.listdir(sym_dir)):
             if not fname.endswith(".parquet"):
                 continue
@@ -104,6 +115,7 @@ def _update_coverage_symbol(symbol, onboard, interval="5m", data_dir=None):
     """
     now = pd.Timestamp.now(tz="UTC")
     sym_dir = os.path.join(data_dir, "binance", "um", "klines", interval, symbol)
+    onboard = _effective_onboard(onboard, sym_dir)
     rows = []
     if os.path.isdir(sym_dir):
         for fname in sorted(os.listdir(sym_dir)):
@@ -180,10 +192,10 @@ def check_gaps(data_dir=None, interval="5m"):
     rows = []
     for _, r in symbols.iterrows():
         symbol = r["symbol"]
-        onboard = r["onboard_date"]
         sym_dir = os.path.join(klines_root, symbol)
         if not os.path.isdir(sym_dir):
             continue
+        onboard = _effective_onboard(r["onboard_date"], sym_dir)
         for fname in sorted(os.listdir(sym_dir)):
             if not fname.endswith(".parquet"):
                 continue
