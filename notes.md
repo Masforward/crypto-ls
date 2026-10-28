@@ -1,23 +1,14 @@
 # 第三周作业报告：全币种 5 分钟 K 线数据库
 
-## 一、数据概况
+# 数据概况
 
 | 项目 | 数值 |
 |---|---|
 | 币种数量 | 523 |
 | 总行数 | 82,152,655（约 8215 万） |
 | 磁盘占用 | 4.9 GB |
-| 数据范围 | 2025-01-01 至今，5 分钟 K 线，USDⓈ-M 永续合约 |
-| 存储格式 | Parquet，按 `data/binance/um/klines/5m/{SYMBOL}/{YYYY-MM}.parquet` 按月分文件 |
 
-## 二、数据质量
-
-- **时间戳对齐**：open_time 是 5 分钟整数倍；close_time = open_time + 5 分钟 − 1 毫秒；统一 UTC；只保存已收盘 K 线。
-- **合法性校验**：最高价 ≥ 开盘/收盘、最低价 ≤ 开盘/收盘、价格 > 0、成交量 ≥ 0、主动买入量 ≤ 总成交量。
-- **覆盖情况**：`data/binance/um/meta/coverage_5m.parquet`（每币每月应有/实有/缺口数）。
-- **缺口明细**：`data/binance/um/meta/gaps_5m.parquet`（symbol、缺失起止时间、缺失根数）。
-
-## 三、缺口最多的 10 个币及原因分析
+# 缺口最多的 10 个币及原因分析
 
 | 排名 | 币种 | 缺口数（根） | 原因分析 |
 |---|---|---|---|
@@ -32,14 +23,7 @@
 | 9 | 哈基米USDT | 6 | 最新几分钟尚未收盘 |
 | 10 | 1000FLOKIUSDT | 5 | 最新几分钟尚未收盘 |
 
-### 两类缺口的说明
-
-- **合约变更币（前 8 个）**：这些币曾做过合约升级，币安的 `onboardDate` 字段标记的是「合约变更时间」而非「上市时间」，升级当天暂停交易半天，形成 95~215 根的真实缺口。`expected` 已改用 `min(onboardDate, 数据实际起点)` 修正。
-- **最新未收盘（第 9~10 名）**：其余 515 个币的缺口都只有 1~2 根，是「最新几分钟尚未收盘」的正常现象。
-
-## 四、抽样对账结论
-
-随机抽取 5 个币、每币 1 天，对比 vision 日度包与 REST 接口，结果**完全一致**：
+随机抽取 5 个币、每币 1 天，对比 vision 日度包与 REST 接口，结果完全一致：
 
 | symbol | date | vision 行数 | REST 行数 | open_time 相同 | close 最大差异 |
 |---|---|---|---|---|---|
@@ -51,9 +35,55 @@
 
 **结论：vision 与 REST 数据一致（行数相同、open_time 集合相同、close 最大差异 0）。**
 
-## 五、验收
+# notebook路径 
 
-- [x] 中断后重新运行 `update_klines`，不重复下载、结果不变（幂等 + 断点续传）。
-- [x] 断网时读取函数和 pytest 测试全部可用（读取不联网）。
-- [x] 全文搜索：数据层以外无 `fapi.binance.com` / `data.binance.vision` / `read_parquet`。
-- [x] notebook 演示：`notebooks/demo.ipynb` 一行 `load_klines` 读 10 币一周 + 画收盘价。
+crypto-ls\notebooks\demo.ipynb
+
+# 中断update_klines
+
+  (.venv) PS C:\Users\26096\Desktop\crypto-ls> python -c "from src.cls.data import update_klines; r = update_klines()"                 
+  BTCUSDT 2026-10-28：今天 REST 新增 1行                                                                                                                       
+  ETHUSDT 2026-10-28：今天 REST 新增 1 行
+  BCHUSDT 2026-10-28：今天 REST 新增 1 行
+  XRPUSDT 2026-10-28：今天 REST 新增 1 行
+  LTCUSDT 2026-10-28：今天 REST 新增 1 行
+  TRXUSDT 2026-10-28：今天 REST 新增 1 行
+  ETCUSDT 2026-10-28：今天 REST 新增 1 行
+  LINKUSDT 2026-10-28：今天 REST 新增 1 行
+  XLMUSDT 2026-10-28：今天 REST 新增 1 行
+  ^C
+  ...
+  KeyboardInterrupt
+
+  (.venv) PS C:\Users\26096\Desktop\crypto-ls> python -c "from src.cls.data import update_klines; r = update_klines()"
+  BTCUSDT 2026-10-28：今天 REST 新增 0 行
+  ETHUSDT 2026-10-28：今天 REST 新增 0 行
+  BCHUSDT 2026-10-28：今天 REST 新增 0 行
+  XRPUSDT 2026-10-28：今天 REST 新增 0 行
+  LTCUSDT 2026-10-28：今天 REST 新增 0 行
+  TRXUSDT 2026-10-28：今天 REST 新增 0 行
+  ETCUSDT 2026-10-28：今天 REST 新增 0 行
+  LINKUSDT 2026-10-28：今天 REST 新增 0 行
+  XLMUSDT 2026-10-28：今天 REST 新增 0 行   # 没有重复下载
+  ADAUSDT 2026-10-28：今天 REST 新增 1 行
+  XMRUSDT 2026-10-28：今天 REST 新增 1 行
+  DASHUSDT 2026-10-28：今天 REST 新增 1 行
+  ZECUSDT 2026-10-28：今天 REST 新增 1 行
+  XTZUSDT 2026-10-28：今天 REST 新增 1 行
+  BNBUSDT 2026-10-28：今天 REST 新增 1 行
+  ATOMUSDT 2026-10-28：今天 REST 新增 1 行
+  ONTUSDT 2026-10-28：今天 REST 新增 1 行
+  ...
+
+# 断网读取函数
+
+(.venv) PS C:\Users\26096\Desktop\crypto-ls> python -c "from src.cls.data import load_klines; print('load_klines:', load_klines('BTCUSDT','2026-10-01','2026-10-02').shape)"                                                                                                                                         load_klines: (288, 13)
+
+(.venv) PS C:\Users\26096\Desktop\crypto-ls> python -c "from src.cls.data import load_panel; print('load_panel:', load_panel('close','BTCUSDT','2026-10-01','2026-10-02').shape)"                                                                                                                                         load_panel: (288, 1)
+
+(.venv) PS C:\Users\26096\Desktop\crypto-ls> python -c "from src.cls.data import list_symbols; print('list_symbols 币数:', len(list_symbols()))"
+list_symbols 币数: 523
+
+(.venv) PS C:\Users\26096\Desktop\crypto-ls> python -c "from src.cls.data import quality_report; print(quality_report('BTCUSDT').to_string())"
+      symbol  expected  actual  gaps  invalid
+108  BTCUSDT    191636  191636     0        0
