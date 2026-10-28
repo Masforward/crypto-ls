@@ -4,8 +4,8 @@ from .client import request
 
 KLINE_COLUMNS = [
     "open_time", "open", "high", "low", "close", "volume",
-    "close_time", "quote_volume", "trades",
-    "taker_buy_base", "taker_buy_quote", "ignore",
+    "close_time", "quote_volume", "count",
+    "taker_buy_volume", "taker_buy_quote_volume", "ignore",
 ]
 LIMIT = 1500  # klines 单次最多返回根数
 
@@ -54,6 +54,12 @@ def _fetch_one(symbol, interval, start_ms, end_ms):
         if len(batch) < LIMIT:
             break
     return rows
+
+
+def _fetch_raw(symbol, interval, start_ms, end_ms):
+    #REST 拉 K 线，返回原始 12 列 DataFrame（open_time 毫秒 int，未归一化）。和 vision 的 download 返回格式对齐，供回填统一写盘。
+    rows = _fetch_one(symbol, interval, start_ms, end_ms)
+    return pd.DataFrame(rows, columns=KLINE_COLUMNS)
 
 
 def get_klines(symbols, interval, start, end):
