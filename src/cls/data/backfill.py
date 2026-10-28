@@ -173,7 +173,14 @@ def update_klines(symbols=None, start="2025-01-01", interval="5m", data_dir=None
         # 从 watermark 所在天到昨天，逐天 backfill_day（vision 日度包，404 REST 兜底）
         day = watermark.floor("1D")
         while day < now.floor("1D"):
-            backfill_day(symbol, interval, day.year, day.month, day.day, data_dir)
+            src = backfill_day(symbol, interval, day.year, day.month, day.day, data_dir)
+            d = day.strftime("%Y-%m-%d")
+            if src == "skip":
+                print(f"  ✓ {symbol} {d}：已完整，跳过")
+            elif src in ("vision", "rest"):
+                print(f"  {symbol} {d}：{src} 更新")
+            else:
+                print(f"  ⚠ {symbol} {d}：无数据（vision 404 且 REST 失败）")
             day += pd.Timedelta(days=1)
 
         # 今天：REST 拉，剔除未收盘（open_time 是毫秒 int，用毫秒比较）
@@ -183,7 +190,10 @@ def update_klines(symbols=None, start="2025-01-01", interval="5m", data_dir=None
         now_ms = int(now.timestamp() * 1000)
         today_df = today_df[today_df["open_time"] + step_ms <= now_ms]
         if not today_df.empty:
-            write_monthly_klines(today_df, symbol, interval, today.year, today.month, data_dir)
+            _, n_added, _ = write_monthly_klines(today_df, symbol, interval, today.year, today.month, data_dir)
+            print(f"  {symbol} {today.strftime('%Y-%m-%d')}：今天 REST 新增 {n_added} 行")
+        else:
+            print(f"  {symbol} {today.strftime('%Y-%m-%d')}：今天无已收盘数据")
 
         # 更新该币的报告（保证 quality_report 读到的报告最新）
         onboard = onboard_map.get(symbol, pd.Timestamp(start))
