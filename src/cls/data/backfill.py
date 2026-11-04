@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import requests
 
+from .client import calibrate_time, server_now
 from .klines import _fetch_raw
 from .store import write_monthly_klines
 from .vision import download_daily, download_monthly
@@ -85,6 +86,7 @@ def backfill_day(symbol, interval, year, month, day, data_dir=None):
 def backfill(symbols, interval, start, data_dir=None):
     if data_dir is None:
         data_dir = _data_dir()
+    calibrate_time()  # 校准币安服务器时间
     # 最终的回填函数，注意now_day不包含今天。
     # 每次回填完一个币后，会自动续写增量更新报告，防断网。
     # 如果中途程序退出，再次下载会读coverage_5m.parquet查询质量，跳过逐行核对。
@@ -93,7 +95,7 @@ def backfill(symbols, interval, start, data_dir=None):
     start = pd.Timestamp(start)
     if start.tzinfo is None:
         start = start.tz_localize("UTC")
-    now = pd.Timestamp.now(tz="UTC")
+    now = server_now()
 
     # 完整历史月的终点 = 上个月最后一天
     last_full = pd.Timestamp(now.year, now.month, 1, tz="UTC") - pd.Timedelta(days=1)
@@ -140,6 +142,7 @@ def update_klines(symbols=None, start="2025-01-01", interval="5m", data_dir=None
     """
     if data_dir is None:
         data_dir = _data_dir()
+    calibrate_time()  # 校准币安服务器时间
     from .meta import _meta_path, _update_coverage_symbol
     from .store import write_monthly_klines
 
@@ -155,7 +158,7 @@ def update_klines(symbols=None, start="2025-01-01", interval="5m", data_dir=None
         symbols_meta = pd.read_parquet(symbols_path)
         onboard_map = dict(zip(symbols_meta["symbol"], symbols_meta["onboard_date"]))
 
-    now = pd.Timestamp.now(tz="UTC")
+    now = server_now()
     step = pd.Timedelta(interval)
     report = []
 
@@ -202,3 +205,63 @@ def update_klines(symbols=None, start="2025-01-01", interval="5m", data_dir=None
         report.append({"symbol": symbol, "watermark": watermark, "updated_to": now})
 
     return pd.DataFrame(report)
+
+
+def fill_missing(symbols=None, interval="5m", start="2025-01-01", data_dir=None):
+    """按上市时间检查整月、整日缺失，用日度包或接口补齐。"""
+    if data_dir is None:
+        data_dir = _data_dir()
+    calibrate_time()
+
+    from .meta import _detect_gaps, _effective_onboard, _meta_path, _update_coverage_symbol
+    from .store import _um_klines_path
+
+    if symbols is None:
+        symbols = pd.read_parquet(_meta_path(data_dir, "symbols"))["symbol"].tolist()
+    elif isinstance(symbols, str):
+        symbols = [symbols]
+
+    symbols_meta = pd.read_parquet(_meta_path(data_dir, "symbols"))
+    onboard_map = dict(zip(symbols_meta["symbol"], symbols_meta["onboard_date"]))
+
+    now = server_now()
+    today_start = now.floor("1D")
+    klines_root = os.path.join(data_dir, "binance", "um", "klines", interval)
+
+    for symbol in symbols:
+        onboard = onboard_map.get(symbol, pd.Timestamp("2025-01-01", tz="UTC"))
+        sym_dir = os.path.join(klines_root, symbol)
+
+        # 真实上市时间（合约变更币的 onboardDate 是合约变更时间，用数据起点修正）
+        eff = _effective_onboard(onboard, sym_dir) if os.path.isdir(sym_dir) else onboard
+        # 整月检查起点 = max(数据范围起点 start, 真实上市时间)，避免补到作业范围外的历史
+        check_start = max(pd.Timestamp(start, tz="UTC"), eff)
+
+        # ① 整月缺失：从检查起点所在月到上个月，文件不存在 → 月度包补齐
+        last_full = pd.Timestamp(now.year, now.month, 1, tz="UTC") - pd.Timedelta(days=1)
+        start_month = pd.Timestamp(check_start.year, check_start.month, 1, tz="UTC")
+        if start_month <= last_full:
+            for year, month in _month_range(start_month, last_full):
+                path = _um_klines_path(data_dir, symbol, interval, year, month)
+                if not os.path.exists(path):
+                    print(f"  {symbol} {year}-{month:02d}: 整月缺失，月度包补齐")
+                    backfill_month(symbol, interval, year, month, data_dir)
+
+        # ② 整日缺失：已有月份里，用 _detect_gaps 找缺口 → 日度包逐天补（不含今天）
+        if os.path.isdir(sym_dir):
+            for fname in sorted(os.listdir(sym_dir)):
+                if not fname.endswith(".parquet"):
+                    continue
+                ym = fname[:-len(".parquet")]
+                year, month = int(ym[:4]), int(ym[5:7])
+                # 当前月只检查到"今天 00:00"，不含今天未结束的天
+                end = today_start if (year, month) == (now.year, now.month) else None
+                df = pd.read_parquet(os.path.join(sym_dir, fname), columns=["open_time"])
+                for gap_start, gap_end, _ in _detect_gaps(df, eff, year, month, interval, end):
+                    d = gap_start.floor("1D")
+                    while d < gap_end:
+                        backfill_day(symbol, interval, d.year, d.month, d.day, data_dir)
+                        d += pd.Timedelta(days=1)
+
+        # ③ 更新该币报告
+        _update_coverage_symbol(symbol, onboard, interval, data_dir)

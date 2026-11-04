@@ -3,6 +3,8 @@ import os
 
 import pandas as pd
 
+from .client import calibrate_time, server_now
+from .store import _atomic_to_parquet
 from .universe import get_universe
 
 
@@ -14,11 +16,12 @@ def _meta_path(data_dir, name):
 def save_symbols(data_dir=None, as_of=None):
     if data_dir is None:
         data_dir = _data_dir()
+    calibrate_time()  # 校准币安服务器时间
     #采集 as_of 当天可交易的 USDT 永续合约清单，保存到 symbols.parquet。
     #复用 get_universe（onboardDate ≤ as_of < deliveryDate 判断，消除幸存者偏差）。
     #字段：symbol, onboard_date（上市时间）, status, as_of, collected_at（采集时刻）。
     if as_of is None:
-        as_of = pd.Timestamp.now(tz="UTC")
+        as_of = server_now()
     else:
         as_of = pd.Timestamp(as_of)
         if as_of.tzinfo is None:
@@ -28,12 +31,12 @@ def save_symbols(data_dir=None, as_of=None):
     df = df.rename(columns={"onboardDate": "onboard_date"})
     df["status"] = "TRADING"
     df["as_of"] = as_of
-    df["collected_at"] = pd.Timestamp.now(tz="UTC")
+    df["collected_at"] = server_now()
     df = df[["symbol", "onboard_date", "status", "as_of", "collected_at"]]
 
     path = _meta_path(data_dir, "symbols")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    df.to_parquet(path, index=False)
+    _atomic_to_parquet(df, path)
     return df
 
 
@@ -74,7 +77,7 @@ def check_coverage(data_dir=None, interval="5m"):
         data_dir = _data_dir()
     symbols = pd.read_parquet(_meta_path(data_dir, "symbols"))
     klines_root = os.path.join(data_dir, "binance", "um", "klines", interval)
-    now = pd.Timestamp.now(tz="UTC")
+    now = server_now()
 
     rows = []
     for _, r in symbols.iterrows():
@@ -104,7 +107,7 @@ def check_coverage(data_dir=None, interval="5m"):
     coverage = pd.DataFrame(rows)
     path = _meta_path(data_dir, "coverage_5m")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    coverage.to_parquet(path, index=False)
+    _atomic_to_parquet(coverage, path)
     return coverage
 
 
@@ -113,7 +116,7 @@ def _update_coverage_symbol(symbol, onboard, interval="5m", data_dir=None):
 
     只重算这一个币的 coverage 行，替换报告里该币的旧行。
     """
-    now = pd.Timestamp.now(tz="UTC")
+    now = server_now()
     sym_dir = os.path.join(data_dir, "binance", "um", "klines", interval, symbol)
     onboard = _effective_onboard(onboard, sym_dir)
     rows = []
@@ -139,7 +142,7 @@ def _update_coverage_symbol(symbol, onboard, interval="5m", data_dir=None):
     if rows:
         cov = pd.concat([cov, pd.DataFrame(rows)], ignore_index=True)
     os.makedirs(os.path.dirname(cov_path), exist_ok=True)
-    cov.to_parquet(cov_path, index=False)
+    _atomic_to_parquet(cov, cov_path)
 
 
 def _detect_gaps(df, onboard, year, month, interval="5m", end=None):
@@ -187,7 +190,7 @@ def check_gaps(data_dir=None, interval="5m"):
         data_dir = _data_dir()
     symbols = pd.read_parquet(_meta_path(data_dir, "symbols"))
     klines_root = os.path.join(data_dir, "binance", "um", "klines", interval)
-    now = pd.Timestamp.now(tz="UTC")
+    now = server_now()
 
     rows = []
     for _, r in symbols.iterrows():
@@ -214,7 +217,7 @@ def check_gaps(data_dir=None, interval="5m"):
     gaps = pd.DataFrame(rows)
     path = _meta_path(data_dir, "gaps_5m")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    gaps.to_parquet(path, index=False)
+    _atomic_to_parquet(gaps, path)
     return gaps
 
 

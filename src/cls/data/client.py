@@ -1,9 +1,12 @@
 import time
 
+import pandas as pd
 import requests
 
 BASE = "https://fapi.binance.com"
 WEIGHT_BUDGET = 2000
+
+_time_offset_ms = 0  # 币安服务器时间 − 本地时钟的偏移（毫秒）；未校准为 0
 
 
 def request(path, params=None, max_retries=3):
@@ -31,3 +34,19 @@ def request(path, params=None, max_retries=3):
         return resp
 
     raise RuntimeError("重试次数用尽")
+
+
+def calibrate_time():
+    """调 /fapi/v1/time 校准本地时钟与币安服务器时钟的偏移（毫秒）。"""
+    global _time_offset_ms
+    resp = request("/fapi/v1/time")
+    server_ms = resp.json()["serverTime"]
+    local_ms = int(pd.Timestamp.now(tz="UTC").timestamp() * 1000)
+    _time_offset_ms = server_ms - local_ms
+    print(f"币安服务器时间偏差：{_time_offset_ms:+.0f} 毫秒")
+    return _time_offset_ms
+
+
+def server_now():
+    """返回币安服务器当前时间（UTC Timestamp）。未校准过则退化成本地时钟。"""
+    return pd.Timestamp.now(tz="UTC") + pd.Timedelta(milliseconds=_time_offset_ms)

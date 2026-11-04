@@ -30,6 +30,15 @@ def _normalize_klines(df):
     return df
 
 
+
+
+def _atomic_to_parquet(df, path):
+    """写 parquet：先写临时文件再原子替换，防止中断损坏原文件。"""
+    tmp = path + ".tmp"
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+
+
 def write_monthly_klines(df, symbol, interval, year, month, data_dir="data"):
     #把某币某月的 K 线写盘（按月分文件）；文件已存在则合并去重。
     #返回 (path, 新增行数, 已有行数)。
@@ -43,5 +52,5 @@ def write_monthly_klines(df, symbol, interval, year, month, data_dir="data"):
         df = _merge(existing, df, "open_time")
         n_dup = n_before + n_incoming - len(df)   # 被去重掉的 = 已有数据
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    df.to_parquet(path, index=False)
+    _atomic_to_parquet(df, path)
     return path, n_incoming - n_dup, n_dup

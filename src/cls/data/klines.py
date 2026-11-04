@@ -1,6 +1,6 @@
 import pandas as pd
 
-from .client import request
+from .client import request, calibrate_time, server_now
 
 KLINE_COLUMNS = [
     "open_time", "open", "high", "low", "close", "volume",
@@ -66,6 +66,7 @@ def get_klines(symbols, interval, start, end):
     #输入多个合约名，步长区间，起始结束时间点，此时的end时间可以是任何数字，大于现在也可以，finalize会修正。
     #返回一个shape为(n*8)的长表，8列的名字是固定的。
     #i.e. get_klines("BTCUSDT", "1h", start="2026-09-01", end="2026-09-05")
+    calibrate_time()  # 校准币安服务器时间
     if isinstance(symbols, str):
         symbols = [symbols]
 
@@ -75,7 +76,7 @@ def get_klines(symbols, interval, start, end):
         start = start.tz_localize("UTC")
     if end.tzinfo is None:
         end = end.tz_localize("UTC")
-    now = pd.Timestamp.now(tz="UTC")
+    now = server_now()
     step = pd.Timedelta(interval)
 
     start_ms = int(start.timestamp() * 1000)

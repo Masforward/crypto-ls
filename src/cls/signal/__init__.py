@@ -1,0 +1,28 @@
+"""信号模块：因子与流水线。
+
+对外接口：
+  Factor —— 因子基类（继承它写新因子）
+  6 个必做因子：Momentum7d / OneDayReversal / Volatility7d / VolumeSurge / TakerBuyRatio / MaxDailyGain
+  compute_scores —— 流水线：输入因子 + 币种 + 时间，输出分数表（时间 × 币种）
+"""
+from .factor import (
+    Factor,
+    MaxDailyGain,
+    Momentum7d,
+    OneDayReversal,
+    TakerBuyRatio,
+    Volatility7d,
+    VolumeSurge,
+)
+from .pipeline import compute_scores
+
+__all__ = [
+    "Factor",
+    "Momentum7d",
+    "OneDayReversal",
+    "Volatility7d",
+    "VolumeSurge",
+    "TakerBuyRatio",
+    "MaxDailyGain",
+    "compute_scores",
+]
