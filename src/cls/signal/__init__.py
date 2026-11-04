@@ -6,10 +6,12 @@
   compute_scores —— 流水线：输入因子 + 币种 + 时间，输出分数表（时间 × 币种）
 """
 from .factor import (
+    Amplitude7d,
     Factor,
     MaxDailyGain,
     Momentum7d,
     OneDayReversal,
+    ReturnSkew7d,
     TakerBuyRatio,
     Volatility7d,
     VolumeSurge,
@@ -24,5 +26,7 @@ __all__ = [
     "VolumeSurge",
     "TakerBuyRatio",
     "MaxDailyGain",
+    "Amplitude7d",
+    "ReturnSkew7d",
     "compute_scores",
 ]

@@ -120,3 +120,35 @@ class MaxDailyGain(Factor):
         recent = closes[-self.history:]          # 31 根 close
         returns = recent[1:] / recent[:-1] - 1.0  # 30 个日收益
         return float(returns.max())
+
+
+class Amplitude7d(Factor):
+    """振幅：过去 7 天（最高 − 最低）÷ 收盘 的平均（日内风险高被高估，越高越看空）。"""
+
+    name = "amplitude_7d"
+    history = 7
+    direction = -1
+
+    def compute(self, df):
+        if len(df) < self.history:
+            return float("nan")
+        recent = df.iloc[-self.history:]
+        amp = (recent["high"] - recent["low"]) / recent["close"]
+        return float(amp.mean())
+
+
+class ReturnSkew7d(Factor):
+    """收益偏度：过去 7 天小时收益的偏度（右偏被高估，越高越看空）。"""
+
+    name = "return_skew_7d"
+    frequency = "1h"
+    history = 169   # 7 天 × 24 小时 + 1
+    direction = -1
+
+    def compute(self, df):
+        closes = df["close"].values
+        if len(closes) < self.history:
+            return float("nan")
+        recent = closes[-self.history:]          # 169 根小时线
+        returns = recent[1:] / recent[:-1] - 1.0  # 168 个收益
+        return float(pd.Series(returns).skew())

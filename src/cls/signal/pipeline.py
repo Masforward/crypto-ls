@@ -4,6 +4,7 @@
 """
 import os
 
+import numpy as np
 import pandas as pd
 
 from ..data import load_klines
@@ -94,3 +95,20 @@ def compute_scores(factors, symbols, start, end, interval="5m", data_dir=None, c
         result[f.name] = score
 
     return result
+
+
+def compute_size(symbols, start, end, interval="5m", data_dir=None, window=30):
+    """算规模表（时间 × 币种）：近 window 天日均成交额的对数（中性化的规模暴露）。
+
+    规模 = log(近 30 天日均 quote_volume)，用于中性化剔除"大币/小币"影响。
+    """
+    df = load_klines(symbols, start, end, interval, data_dir=data_dir)
+    daily = _resample(df, "1d")
+    rows = []
+    for symbol, g in daily.groupby("symbol"):
+        g = g.sort_values("open_time").copy()
+        # rolling(30) 后 shift(1)：用"之前 30 天"（不含当天）的日均成交额
+        g["size"] = np.log(g["quote_volume"].rolling(window).mean().shift(1))
+        rows.append(g[["open_time", "symbol", "size"]])
+    long_df = pd.concat(rows, ignore_index=True)
+    return long_df.pivot(index="open_time", columns="symbol", values="size")
