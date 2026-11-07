@@ -3,6 +3,13 @@ import pandas as pd
 
 from .client import request, calibrate_time, server_now
 
+# 稳定币 baseAsset 列表：价格锚定法币、几乎无波动，做截面因子无意义，从币种池排除
+STABLECOINS = {
+    "USDC", "FDUSD", "TUSD", "USDP", "BUSD", "USDE", "USDS", "USDD",
+    "DAI", "FRAX", "USD1", "XUSD", "USDG", "GUSD", "SUSD", "PYUSD",
+    "EUR", "AEUR", "EURI", "EURS", "USR", "DOLA", "LUSD", "MIM", "USDY",
+}
+
 
 def _filter_universe(symbols, as_of_ms, contract_type="PERPETUAL", quote_asset="USDT"):
     #输入未加工的返回文本以及查询时间，合约类型和币种，筛选返回当时市场上的交易币种。
@@ -11,6 +18,7 @@ def _filter_universe(symbols, as_of_ms, contract_type="PERPETUAL", quote_asset="
         if (s.get("quoteAsset") == quote_asset
                 and s.get("contractType") == contract_type
                 and s.get("status") != "PENDING_TRADING"   # 排除待交易币（还没上市交易，无数据）；保留 SETTLING（下架前有历史数据，消除幸存者偏差）
+                and s.get("baseAsset") not in STABLECOINS  # 排除稳定币（USDC/FRAX 等锚定法币、无波动）
                 and s.get("onboardDate", 0) <= as_of_ms
                 and s.get("deliveryDate", 0) > as_of_ms):
             rows.append({
