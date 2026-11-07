@@ -108,7 +108,8 @@ def compute_size(symbols, start, end, interval="5m", data_dir=None, window=30):
     for symbol, g in daily.groupby("symbol"):
         g = g.sort_values("open_time").copy()
         # rolling(30) 后 shift(1)：用"之前 30 天"（不含当天）的日均成交额
-        g["size"] = np.log(g["quote_volume"].rolling(window).mean().shift(1))
+        rolled = g["quote_volume"].rolling(window).mean().shift(1)
+        g["size"] = np.log(rolled.where(rolled > 0))  # 0/负数 → NaN，避免 log(0)=-inf 导致回归报错
         rows.append(g[["open_time", "symbol", "size"]])
     long_df = pd.concat(rows, ignore_index=True)
     return long_df.pivot(index="open_time", columns="symbol", values="size")

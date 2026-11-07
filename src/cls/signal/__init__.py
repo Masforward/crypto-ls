@@ -17,6 +17,8 @@ from .factor import (
     VolumeSurge,
 )
 from .pipeline import compute_scores
+from .preprocess import preprocess
+from .report import generate_report, save_figures, save_report
 
 __all__ = [
     "Factor",
@@ -29,4 +31,8 @@ __all__ = [
     "Amplitude7d",
     "ReturnSkew7d",
     "compute_scores",
+    "preprocess",
+    "generate_report",
+    "save_report",
+    "save_figures",
 ]

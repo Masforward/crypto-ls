@@ -103,6 +103,8 @@ class TakerBuyRatio(Factor):
         past = total[-self.history:-1]
         past_taker = taker[-self.history:-1]
         past_ratio = np.divide(past_taker, past, out=np.full_like(past, np.nan), where=past != 0)
+        if np.isnan(past_ratio).all():   # 过去 30 天全无成交额，无基准可减
+            return float("nan")
         return float(recent_ratio - np.nanmean(past_ratio))
 
 

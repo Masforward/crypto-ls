@@ -27,3 +27,6 @@ __pycache__/
 # IDE
 .idea/
 .vscode/
+
+# 报告输出（生成物，不入库）
+report_output/

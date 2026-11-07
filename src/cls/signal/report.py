@@ -9,11 +9,13 @@ import pandas as pd
 
 from .evaluate import (
     close_panel,
+    compute_forward_returns,
     coverage_stats,
     evaluate,
     factor_correlation,
     factor_stability,
     monthly_rankic,
+    rankic_series,
 )
 from .pipeline import compute_scores, compute_size
 from .preprocess import preprocess
@@ -79,6 +81,7 @@ def generate_report(factors, symbols, start, end, data_dir=None):
             "monthly_rankic": monthly_rankic(post, close, HORIZON_MAIN),
             "stability": factor_stability(post),
             "coverage": coverage_stats(post, raw),
+            "rankic": rankic_series(post, compute_forward_returns(close, HORIZON_MAIN)),
         }
 
     summary = pd.DataFrame(rows)
@@ -87,8 +90,91 @@ def generate_report(factors, symbols, start, end, data_dir=None):
 
 
 def save_report(summary, details, out_dir):
-    """保存汇总表（csv）和相关性矩阵（csv）。图在 save_figures 里。"""
+    """保存汇总表（csv）和相关性矩阵（csv）。图在 save_figures 里。
+
+    csv 用 utf-8-sig（带 BOM），保证 Excel 直接打开中文不乱码。
+    """
     os.makedirs(out_dir, exist_ok=True)
-    summary.to_csv(os.path.join(out_dir, "summary.csv"), index=False)
-    details["_correlation"].round(3).to_csv(os.path.join(out_dir, "correlation.csv"))
+    summary.to_csv(os.path.join(out_dir, "summary.csv"), index=False, encoding="utf-8-sig")
+    details["_correlation"].round(3).to_csv(os.path.join(out_dir, "correlation.csv"), encoding="utf-8-sig")
     return out_dir
+
+
+def save_figures(summary, details, out_dir):
+    """把 4 张图（RankIC 累积 / 分月 / 衰减 / 相关矩阵）汇总到一个 PDF。"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    os.makedirs(out_dir, exist_ok=True)
+    pdf_path = os.path.join(out_dir, "report.pdf")
+    corr = details.get("_correlation")
+    factors = [k for k in details if k != "_correlation"]
+    horizons = [1, 2, 3, 5, 10]
+
+    with PdfPages(pdf_path) as pdf:
+        # 图1：RankIC 累积曲线（每个因子一条）
+        fig, ax = plt.subplots(figsize=(10, 5))
+        for name in factors:
+            d = details[name]
+            ax.plot(d["rankic"].index, d["rankic"].cumsum(), label=name, lw=1.5)
+        ax.axhline(0, color="gray", lw=0.8, ls="--")
+        ax.set_title("Cumulative RankIC (horizon=1)")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Cumulative RankIC")
+        ax.legend(fontsize=8, loc="best")
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # 图2：分月 RankIC（稳定性，每个因子一条折线）
+        fig, ax = plt.subplots(figsize=(10, 5))
+        for name in factors:
+            m = details[name]["monthly_rankic"]
+            ax.plot(m.index.astype(str), m.values, marker="o", label=name, lw=1.5)
+        ax.axhline(0, color="gray", lw=0.8, ls="--")
+        ax.set_title("Monthly RankIC (stability)")
+        ax.set_xlabel("Month")
+        ax.set_ylabel("Mean RankIC")
+        ax.legend(fontsize=8, loc="best")
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # 图3：衰减曲线（RankIC 随持有期变化）
+        fig, ax = plt.subplots(figsize=(10, 5))
+        for name in factors:
+            means = [details[name]["post"]["rankic"][h]["mean"] for h in horizons]
+            ax.plot(horizons, means, marker="o", label=name, lw=1.5)
+        ax.axhline(0, color="gray", lw=0.8, ls="--")
+        ax.set_title("RankIC decay (across horizons)")
+        ax.set_xlabel("Horizon")
+        ax.set_ylabel("Mean RankIC")
+        ax.legend(fontsize=8, loc="best")
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # 图4：相关性矩阵热力图
+        if corr is not None:
+            fig, ax = plt.subplots(figsize=(8, 7))
+            im = ax.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
+            ax.set_xticks(range(len(corr.columns)))
+            ax.set_xticklabels(corr.columns, rotation=45, ha="right", fontsize=7)
+            ax.set_yticks(range(len(corr.index)))
+            ax.set_yticklabels(corr.index, fontsize=7)
+            for i in range(len(corr)):
+                for j in range(len(corr)):
+                    ax.text(j, i, f"{corr.values[i, j]:.2f}",
+                            ha="center", va="center", fontsize=6)
+            fig.colorbar(im, ax=ax)
+            ax.set_title("Factor correlation matrix")
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    return pdf_path

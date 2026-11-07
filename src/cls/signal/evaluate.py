@@ -55,8 +55,33 @@ def rankic_series(score, forward_returns):
     return pd.Series(out, index=score.index)
 
 
-def _ic_stats(series):
-    """IC 序列的统计量：均值、标准差、ICIR、为正比例、t 值。"""
+def _newey_west_t(series, max_lag):
+    """Newey-West 调整的 t 值（处理持有期>1 的重叠自相关）。
+
+    max_lag = 持有期 - 1（持有期 h 的收益最多重叠 h-1 期）。
+    """
+    s = series.dropna()
+    n = len(s)
+    if n == 0 or s.std() == 0:
+        return np.nan
+    e = s - s.mean()                      # 去均值
+    var = float((e ** 2).sum())           # 基础方差项 Σe²
+    for lag in range(1, max_lag + 1):
+        if lag >= n:
+            break
+        w = 1.0 - lag / (max_lag + 1)     # Bartlett 权重（越远权重越小）
+        cov = float((e[lag:] * e[:-lag]).sum())
+        var += 2.0 * w * cov              # 加上自协方差
+    var /= n
+    se = np.sqrt(var / n)                 # Newey-West 标准误
+    return float(s.mean() / se)
+
+
+def _ic_stats(series, max_lag=0):
+    """IC 序列的统计量：均值、标准差、ICIR、为正比例、t 值。
+
+    max_lag=0 用普通 t 值（持有期1）；max_lag>0 用 Newey-West（持有期>1 处理重叠）。
+    """
     s = series.dropna()
     if len(s) == 0:
         return {"n": 0, "mean": np.nan, "std": np.nan,
@@ -64,7 +89,10 @@ def _ic_stats(series):
     mean = s.mean()
     std = s.std(ddof=1)
     icir = mean / std if std > 0 else np.nan
-    t = mean / (std / np.sqrt(len(s))) if std > 0 else np.nan
+    if max_lag > 0:
+        t = _newey_west_t(series, max_lag)
+    else:
+        t = mean / (std / np.sqrt(len(s))) if std > 0 else np.nan
     return {"n": int(len(s)), "mean": float(mean), "std": float(std),
             "icir": float(icir), "pos_ratio": float((s > 0).mean()),
             "t": float(t)}
@@ -84,8 +112,8 @@ def evaluate(score, close_panel, horizons=HORIZONS):
     result = {"ic": {}, "rankic": {}}
     for h in horizons:
         fwd = compute_forward_returns(close_panel, h)
-        result["ic"][h] = _ic_stats(ic_series(score, fwd))
-        result["rankic"][h] = _ic_stats(rankic_series(score, fwd))
+        result["ic"][h] = _ic_stats(ic_series(score, fwd), max_lag=h - 1)
+        result["rankic"][h] = _ic_stats(rankic_series(score, fwd), max_lag=h - 1)
     return result
 
 
