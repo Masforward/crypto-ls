@@ -151,3 +151,111 @@ class ICIRWeighted(_ICBased):
         mean = hist.mean()
         std = hist.std()
         return float(mean / std) if std > 0 else float(mean)  # std=0 退化：退回均值
+
+
+class MaxCompositeICIR(_ICBased):
+    """最大化复合 ICIR（选做）：用各因子 IC 的均值和协方差求最优权重，协方差做收缩。
+
+    复合 ICIR = wᵀμ / sqrt(wᵀΣw)，最大化它的解是 w ∝ Σ⁻¹μ。
+    协方差收缩避免权重极端。
+    """
+
+    name = "max_composite_icir"
+
+    def __init__(self, lookback=60, holdback=2, allow_negative=False, cap=None, shrinkage=0.2):
+        super().__init__(lookback, holdback, allow_negative, cap)
+        self.shrinkage = shrinkage
+
+    def _compute_weights(self, idx, names, ic_history):
+        weights = pd.DataFrame(np.nan, index=idx, columns=names)
+        for t in idx:
+            # 收集每个因子过去 lookback 期的 IC（对齐成矩阵）
+            hist_list = []
+            ok = True
+            for n in names:
+                hist = ic_history.get(n) if ic_history else None
+                if hist is None:
+                    ok = False
+                    break
+                past = hist[hist.index < t - pd.Timedelta(days=self.holdback - 1)].tail(self.lookback)
+                if len(past) < self.lookback:
+                    ok = False
+                    break
+                hist_list.append(past.values)
+            if not ok:
+                weights.loc[t] = 1.0 / len(names)
+                continue
+
+            H = np.column_stack(hist_list)          # (lookback, n_factors)
+            mu = H.mean(axis=0)                      # IC 均值向量
+            S = np.cov(H, rowvar=False)              # IC 协方差矩阵
+            # 协方差收缩：向对角（各自方差）收缩，避免求逆不稳
+            S = (1 - self.shrinkage) * S + self.shrinkage * np.diag(np.diag(S))
+
+            try:
+                w = np.linalg.solve(S, mu)           # w ∝ Σ⁻¹μ
+            except np.linalg.LinAlgError:
+                weights.loc[t] = 1.0 / len(names)
+                continue
+
+            w = {n: float(w[i]) for i, n in enumerate(names)}
+            if not self.allow_negative:
+                w = {k: max(v, 0.0) for k, v in w.items()}
+            total = sum(w.values())
+            if total <= 0:
+                weights.loc[t] = 1.0 / len(names)
+                continue
+            w = {k: v / total for k, v in w.items()}
+            if self.cap is not None:
+                for k in w:
+                    if w[k] > self.cap:
+                        w[k] = self.cap
+                s = sum(w.values())
+                w = {k: v / s for k, v in w.items()}
+            weights.loc[t] = w
+        return weights
+
+
+class DecorrelatedEqualWeight(Composer):
+    """去相关后等权（选做）：先消除因子之间相关（逐个回归取残差），再等权合成。"""
+
+    name = "decorrelated_equal_weight"
+
+    def compose(self, scores, ic_history=None):
+        aligned, idx, cols = self._align(scores)
+        names = list(aligned.keys())
+
+        # Gram-Schmidt：每个因子对之前所有（已去相关的）因子回归，取残差
+        decorrelated = {}
+        for i, n in enumerate(names):
+            if i == 0:
+                decorrelated[n] = aligned[n]
+            else:
+                prev = [decorrelated[names[j]] for j in range(i)]
+                decorrelated[n] = self._residual(aligned[n], prev)
+
+        weights = self._equal_weights(idx, names)
+        comp = self._weighted_composite(decorrelated, idx, cols, weights)
+        return comp, weights
+
+    def _residual(self, target, exposures):
+        """target 对 exposures（多个面板）逐时刻截面回归，取残差。"""
+        out = pd.DataFrame(np.nan, index=target.index, columns=target.columns)
+        for t in target.index:
+            y = target.loc[t]
+            valid = y.notna()
+            xs = []
+            for e in exposures:
+                x = e.loc[t]
+                xs.append(x)
+                valid &= x.notna()
+            if valid.sum() < 3:
+                out.loc[t] = y
+                continue
+            X = np.column_stack([np.ones(valid.sum())] + [x[valid].values for x in xs])
+            coef, *_ = np.linalg.lstsq(X, y[valid].values, rcond=None)
+            resid = y[valid].values - X @ coef
+            row = pd.Series(np.nan, index=target.columns)
+            row.loc[valid[valid].index] = resid
+            out.loc[t] = row
+        return out

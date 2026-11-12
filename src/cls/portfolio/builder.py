@@ -68,8 +68,8 @@ class QuantileLongShort(PortfolioBuilder):
             # ③ 分配权重（子类覆盖）
             w = self._assign_weights(row, longs, shorts, risk, t, cfg, scores.columns)
 
-            # ④ 约束：截断归一 → 美元中性再调整
-            w = self._constrain(w, cfg)
+            # ④ 约束：截断归一 → 美元中性 → beta 中性（可选）
+            w = self._constrain(w, cfg, risk, t)
 
             weights.loc[t] = w
             diagnostics.append(self._diagnose(w, cfg))
@@ -97,14 +97,39 @@ class QuantileLongShort(PortfolioBuilder):
         liquid = vol_row[vol_row >= max_amount / cfg["liquidity_frac"]]
         return row.reindex(liquid.index).dropna()
 
-    def _constrain(self, w, cfg):
-        """按上限截断并重新归一，再调整美元中性。"""
+    def _constrain(self, w, cfg, risk=None, t=None):
+        """按上限截断并重新归一，再调整美元中性（可选 beta 中性）。"""
         w = w.clip(-cfg["max_weight"], cfg["max_weight"])
         if cfg.get("dollar_neutral", True):
             w = self._dollar_neutralize(w)
+        if cfg.get("beta_neutral", False) and risk and "beta" in risk and t is not None and t in risk["beta"].index:
+            w = self._beta_neutralize(w, risk["beta"].loc[t])
         gross = w.abs().sum()
         if gross > cfg["gross"] and gross > 0:
             w = w * (cfg["gross"] / gross)
+        return w
+
+    def _beta_neutralize(self, w, beta_row):
+        """beta 中性（选做，简化）：调整空头总额，使组合 beta 接近 0。
+
+        组合 beta = Σ w_i·β_i。用空头对冲多头 beta：调整空头总额 S' = L·β_long/β_short。
+        注意：这会轻微破坏美元中性（beta 中性优先）。
+        """
+        b = beta_row.reindex(w.index).fillna(0.0)
+        port_beta = float((w * b).sum())
+        if abs(port_beta) < 1e-6:
+            return w
+        mask_long = w > 0
+        mask_short = w < 0
+        if not mask_long.any() or not mask_short.any():
+            return w
+        lb = float((w * b)[mask_long].sum() / w[mask_long].sum())
+        sb = float((w * b)[mask_short].sum() / -w[mask_short].sum())
+        if lb > 1e-6 and sb > 1e-6:
+            w = w.copy()
+            target_short = w[mask_long].sum() * lb / sb
+            cur_short = -w[mask_short].sum()
+            w[mask_short] = w[mask_short] * (target_short / cur_short)
         return w
 
     def _dollar_neutralize(self, w):
@@ -172,4 +197,28 @@ class InverseVolWeighted(QuantileLongShort):
             w[longs] = inv_vol[longs] / inv_vol[longs].sum()
         if inv_vol[shorts].sum() > 0:
             w[shorts] = -inv_vol[shorts] / inv_vol[shorts].sum()
+        return w
+
+
+class MeanVariance(QuantileLongShort):
+    """均值方差优化（选做）：预期收益 = 分数 × 经验 IC 系数，权重 ∝ μ/var（对角协方差）。"""
+
+    name = "mean_variance"
+
+    def _assign_weights(self, row, longs, shorts, risk, t, cfg, all_columns):
+        ic_coef = cfg.get("ic_coef", 0.05)          # 经验 IC 系数
+        mu = (row - row.mean()) * ic_coef            # 预期收益 ∝ 去均值分数
+        w = pd.Series(0.0, index=all_columns)
+        # 方差（对角协方差简化）：波动率²
+        if risk and "volatility" in risk and t in risk["volatility"].index:
+            vol = risk["volatility"].loc[t].reindex(all_columns)
+        else:
+            vol = pd.Series(1.0, index=all_columns)
+        var = vol ** 2
+        raw = mu / var                                # w ∝ μ / var（对角协方差的最优解）
+        # 多头、空头各自归一
+        if raw[longs].sum() > 0:
+            w[longs] = raw[longs] / raw[longs].sum()
+        if raw[shorts].abs().sum() > 0:
+            w[shorts] = raw[shorts] / raw[shorts].abs().sum()
         return w
