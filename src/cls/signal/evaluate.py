@@ -23,13 +23,13 @@ def close_panel(symbols, start, end, interval="5m", data_dir=None):
 
 
 def compute_forward_returns(close_panel, horizon=1):
-    """下期收益：持有期 horizon 的累计收益 = close[t+h-1] / close[t-1] - 1。
+    """下期收益（滞后一期）：持有期 horizon 的累计收益 = close[t+h] / close[t] - 1。
 
-    决策时刻 t 已知最新收盘 close[t-1]（t-1 到 t 那根已收盘），
-    收益从 t 那根开始算，持有 h 根 → close[t+h-1] / close[t-1] - 1。
+    决策时刻 t（每天 00:00）用 < t 的数据算因子值；收益滞后一期，
+    从决策后第一根收盘 close[t] 开始，持有 h 根 → close[t+h] / close[t] - 1。
     """
-    base = close_panel.shift(1)              # close[t-1]
-    future = close_panel.shift(-(horizon - 1))  # close[t+h-1]
+    base = close_panel                       # close[t]（决策后第一根收盘）
+    future = close_panel.shift(-horizon)     # close[t+h]
     return future / base - 1
 
 
