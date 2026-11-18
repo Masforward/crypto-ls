@@ -30,7 +30,7 @@ def test_zero_weights_nav_constant():
     close, open_, idx = _prices(n=10, symbols=("BTC", "ETH"))
     w = _weights(idx, {"BTC": 0.0, "ETH": 0.0})
     eng = BacktestEngine({"initial_capital": 1e6})
-    snap, fills = eng.run(w, close, open_)
+    snap, fills, _, _ = eng.run(w, close, open_)
     assert np.allclose(snap["nav"].values, 1e6)
     assert snap["fee"].sum() == 0
     assert snap["funding"].sum() == 0
@@ -41,7 +41,7 @@ def test_full_long_nav_equals_price_change():
     close, open_, idx = _prices(n=6, symbols=("BTC",), start_price=100.0)
     w = _weights(idx, {"BTC": 1.0})
     eng = BacktestEngine({"initial_capital": 1e6}, cost_model=FixedCost(0.0, 0.0))
-    snap, fills = eng.run(w, close, open_)
+    snap, fills, _, _ = eng.run(w, close, open_)
     # 满仓做多：净值应跟随 BTC 价格（成交价用下一根开盘价，近似跟随 close）
     price_ret = close["BTC"].iloc[-1] / close["BTC"].iloc[0] - 1
     nav_ret = snap["nav"].iloc[-1] / 1e6 - 1
@@ -61,7 +61,7 @@ def test_same_coin_long_short_pnl_zero():
     # 做多(+1) → 反手做空(-1) → 平仓(0)，价格恒定则盈亏为 0
     w = pd.DataFrame({"BTC": [1.0, 1.0, -1.0, -1.0, 0.0, 0.0]}, index=idx)
     eng = BacktestEngine({"initial_capital": 1e6}, cost_model=FixedCost(0.0, 0.0))
-    snap, fills = eng.run(w, close, open_)
+    snap, fills, _, _ = eng.run(w, close, open_)
     assert abs(snap["nav"].iloc[-1] - 1e6) < 1e-6
 
 
@@ -71,8 +71,8 @@ def test_cost_only_changes_nav_by_fee_diff():
     w = pd.DataFrame({"BTC": [1.0] * len(idx)}, index=idx)
     eng0 = BacktestEngine({"initial_capital": 1e6}, cost_model=FixedCost(0.0, 0.0))
     eng1 = BacktestEngine({"initial_capital": 1e6}, cost_model=FixedCost(0.001, 0.0))
-    snap0, fills0 = eng0.run(w, close, open_)
-    snap1, fills1 = eng1.run(w, close, open_)
+    snap0, fills0, _, _ = eng0.run(w, close, open_)
+    snap1, fills1, _, _ = eng1.run(w, close, open_)
     traded1 = pd.DataFrame(fills1)["notional"].sum()
     diff = snap0["nav"].iloc[-1] - snap1["nav"].iloc[-1]
     assert abs(diff - traded1 * 0.001) < 1e-6
@@ -83,8 +83,9 @@ def test_constant_funding_rate():
     close, open_, idx = _constant_prices()
     w = pd.DataFrame({"BTC": [1.0] * len(idx)}, index=idx)
     fr = pd.DataFrame({"BTC": 0.0001}, index=idx)
-    eng = BacktestEngine({"initial_capital": 1e6}, cost_model=FixedCost(0.0, 0.0))
-    snap, fills = eng.run(w, close, open_, funding_rate=fr)
+    eng = BacktestEngine({"initial_capital": 1e6, "cash_buffer_ratio": 0.0},
+                         cost_model=FixedCost(0.0, 0.0))
+    snap, fills, _, _ = eng.run(w, close, open_, funding_rate=fr)
     # 价格恒定 → 名义价值 = 1e6；第一天买入、第二天成交，故结算 n-1 次，多头付费率
     expected = 1e6 * 0.0001 * (len(idx) - 1)
     assert abs(abs(snap["funding"].sum()) - expected) < 1.0
@@ -95,14 +96,14 @@ def test_no_future_function():
     close, open_, idx = _prices(n=10, symbols=("BTC", "ETH"), seed=1)
     w = _weights(idx, {"BTC": 1.0, "ETH": -1.0})
     eng = BacktestEngine({"initial_capital": 1e6})
-    snap1, fills1 = eng.run(w, close, open_)
+    snap1, fills1, _, _ = eng.run(w, close, open_)
 
     # 污染第 6 根（index 5）之后的行情
     close2 = close.copy()
     open2 = open_.copy()
     close2.iloc[6:] = close2.iloc[6:] * 999.0
     open2.iloc[6:] = open2.iloc[6:] * 999.0
-    snap2, fills2 = eng.run(w, close2, open2)
+    snap2, fills2, _, _ = eng.run(w, close2, open2)
 
     # t 及之前（前 5 期）的快照应完全一致
     pd.testing.assert_frame_equal(snap1.iloc[:5], snap2.iloc[:5])
