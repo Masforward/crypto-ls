@@ -34,7 +34,7 @@ def _resample(df, rule):
     return pd.concat(out, ignore_index=True)
 
 
-def _compute_one_factor(factor, daily):
+def _compute_one_factor(factor, daily, market_daily=None):
     """对单个因子，算所有币、所有决策时刻的原始值，返回分数表（时间 × 币种）。"""
     rows = []
     for symbol, g in daily.groupby("symbol"):
@@ -46,7 +46,15 @@ def _compute_one_factor(factor, daily):
             hist = g.iloc[max(0, i - 1 - factor.history): i - 1]  # t 之前已收盘的数据
             if len(hist) < factor.history:
                 continue
-            val = factor.compute(hist)
+            if getattr(factor, "needs_market", False):
+                if market_daily is None or market_daily.empty:
+                    continue
+                m = market_daily[market_daily["open_time"] < t].tail(factor.history)
+                if len(m) < factor.history:
+                    continue
+                val = factor.compute(hist, m)
+            else:
+                val = factor.compute(hist)
             rows.append({"open_time": t, "symbol": symbol, factor.name: val})
     if not rows:
         return pd.DataFrame()
@@ -87,7 +95,12 @@ def compute_scores(factors, symbols, start, end, interval="5m", data_dir=None, c
         # 按因子频率聚合（日线因子 1d，小时线因子 1h），再算分数表
         rule = "1h" if f.frequency == "1h" else "1d"
         agg = _resample(df, rule)
-        score = _compute_one_factor(f, agg)
+        # 需要市场数据的因子（beta/特质波动率），额外读 BTC 并聚合
+        market_daily = None
+        if getattr(f, "needs_market", False):
+            market_df = load_klines(["BTCUSDT"], start, end, interval, data_dir=data_dir)
+            market_daily = _resample(market_df, rule)
+        score = _compute_one_factor(f, agg, market_daily)
 
         if cache:
             os.makedirs(cache_dir, exist_ok=True)

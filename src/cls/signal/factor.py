@@ -19,8 +19,9 @@ class Factor:
     frequency = "1d"     # 计算频率（日线）
     history = 0          # 计算所需的历史长度（天）
     direction = +1       # 预期方向：+1 越高越看多，-1 越高越看空
+    needs_market = False  # 是否需要市场（BTC）数据（如 beta、特质波动率）
 
-    def compute(self, df):
+    def compute(self, df, market=None):
         raise NotImplementedError
 
 
@@ -154,3 +155,147 @@ class ReturnSkew7d(Factor):
         recent = closes[-self.history:]          # 169 根小时线
         returns = recent[1:] / recent[:-1] - 1.0  # 168 个收益
         return float(pd.Series(returns).skew())
+
+
+class OvernightReturn(Factor):
+    """隔夜收益：昨收到今开的跳空（跳空高开有惯性，越高越看多）。"""
+
+    name = "overnight_return"
+    history = 2   # 需要 close[t-2] 和 open[t-1]
+
+    def compute(self, df):
+        if len(df) < 2:
+            return float("nan")
+        return float(df["open"].iloc[-1] / df["close"].iloc[-2] - 1.0)
+
+
+class IntradayRangePos(Factor):
+    """日内收盘位置：收盘价在当天振幅区间的位置 0~1（收在高位有惯性，越高越看多）。"""
+
+    name = "intraday_range_pos"
+    history = 1
+
+    def compute(self, df):
+        last = df.iloc[-1]
+        rng = last["high"] - last["low"]
+        if rng == 0:
+            return float("nan")
+        return float((last["close"] - last["low"]) / rng)
+
+
+class RealizedSkew30d(Factor):
+    """已实现偏度：过去 30 天日收益的偏度（右偏=彩票特征被高估，越高越看空）。"""
+
+    name = "realized_skew_30d"
+    history = 31   # 31 根 close 算 30 个日收益
+    direction = -1
+
+    def compute(self, df):
+        closes = df["close"].values
+        if len(closes) < self.history:
+            return float("nan")
+        recent = closes[-self.history:]
+        returns = recent[1:] / recent[:-1] - 1.0
+        return float(pd.Series(returns).skew())
+
+
+class UpDownVolRatio(Factor):
+    """上下行波动比：上行收益波动 ÷ 下行收益波动（上行波动大=动能强，越高越看多）。"""
+
+    name = "updown_vol_ratio"
+    history = 31
+
+    def compute(self, df):
+        closes = df["close"].values
+        if len(closes) < self.history:
+            return float("nan")
+        recent = closes[-self.history:]
+        returns = recent[1:] / recent[:-1] - 1.0
+        up, down = returns[returns > 0], returns[returns < 0]
+        if len(up) < 2 or len(down) < 2:
+            return float("nan")
+        down_vol = down.std()
+        if down_vol == 0:
+            return float("nan")
+        return float(up.std() / down_vol)
+
+
+class VolPriceCorr(Factor):
+    """量价相关：日收益与成交额变化率的相关（量价同向=健康，越高越看多）。"""
+
+    name = "vol_price_corr"
+    history = 31
+
+    def compute(self, df):
+        closes = df["close"].values
+        vols = df["quote_volume"].values
+        if len(closes) < self.history or len(vols) < self.history:
+            return float("nan")
+        rc = closes[-self.history:]
+        rv = vols[-self.history:]
+        returns = rc[1:] / rc[:-1] - 1.0
+        vol_chg = rv[1:] / rv[:-1] - 1.0
+        if np.std(returns) == 0 or np.std(vol_chg) == 0:
+            return float("nan")
+        return float(np.corrcoef(returns, vol_chg)[0, 1])
+
+
+class Amihud(Factor):
+    """非流动性：|日收益| ÷ 日成交额 的均值（高非流动性=流动性溢价，越高越看多）。"""
+
+    name = "amihud"
+    history = 31
+
+    def compute(self, df):
+        closes = df["close"].values
+        vols = df["quote_volume"].values
+        if len(closes) < self.history:
+            return float("nan")
+        rc = closes[-self.history:]
+        rv = vols[-self.history:]
+        returns = rc[1:] / rc[:-1] - 1.0
+        vols_r = rv[1:]
+        ratio = np.abs(returns) / np.where(vols_r > 0, vols_r, np.nan)
+        if np.isnan(ratio).all():
+            return float("nan")
+        return float(np.nanmean(ratio))
+
+
+class BtcBeta(Factor):
+    """BTC beta：日收益对 BTC 日收益的回归斜率（高 beta=跟大盘无独立 alpha，越高越看空）。"""
+
+    name = "btc_beta"
+    history = 31
+    direction = -1
+    needs_market = True
+
+    def compute(self, df, market=None):
+        closes = df["close"].values
+        if len(closes) < self.history or market is None or len(market) < self.history:
+            return float("nan")
+        r = closes[-self.history:][1:] / closes[-self.history:][:-1] - 1.0
+        m = market["close"].values[-self.history:][1:] / market["close"].values[-self.history:][:-1] - 1.0
+        var_m = np.var(m)
+        if var_m == 0:
+            return float("nan")
+        return float(np.cov(r, m)[0, 1] / var_m)
+
+
+class IdioVol(Factor):
+    """特质波动率：减去 beta×BTC 收益后的残差波动（高特质波动=彩票偏好被高估，越高越看空）。"""
+
+    name = "idio_vol"
+    history = 31
+    direction = -1
+    needs_market = True
+
+    def compute(self, df, market=None):
+        closes = df["close"].values
+        if len(closes) < self.history or market is None or len(market) < self.history:
+            return float("nan")
+        r = closes[-self.history:][1:] / closes[-self.history:][:-1] - 1.0
+        m = market["close"].values[-self.history:][1:] / market["close"].values[-self.history:][:-1] - 1.0
+        var_m = np.var(m)
+        beta = np.cov(r, m)[0, 1] / var_m if var_m > 0 else 0.0
+        resid = r - beta * m
+        return float(resid.std())

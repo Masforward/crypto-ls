@@ -1,0 +1,114 @@
+{
+  "overnight_return": {
+    "name": "overnight_return",
+    "category": "intraday_structure",
+    "hypothesis": "隔夜跳空高开=积极消息/情绪，有惯性",
+    "direction": 1,
+    "failure": "跳空是过度反应，开盘后回补",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 1
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "intraday_range_pos": {
+    "name": "intraday_range_pos",
+    "category": "intraday_structure",
+    "hypothesis": "收盘在高位=买方主导到尾盘，次日有惯性",
+    "direction": 1,
+    "failure": "尾盘拉高是诱多，次日低开",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 1
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "realized_skew_30d": {
+    "name": "realized_skew_30d",
+    "category": "hf_aggregation",
+    "hypothesis": "右偏=彩票特征被高估",
+    "direction": -1,
+    "failure": "强趋势市右偏是真实强势",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 30
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "updown_vol_ratio": {
+    "name": "updown_vol_ratio",
+    "category": "hf_aggregation",
+    "hypothesis": "上行波动大=资金追捧、动能强",
+    "direction": 1,
+    "failure": "上行波动大是冲高回落前兆",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 30
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "vol_price_corr": {
+    "name": "vol_price_corr",
+    "category": "price_volume",
+    "hypothesis": "量价同向=健康上涨",
+    "direction": 1,
+    "failure": "放量上涨是拉高出货",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 30
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "amihud": {
+    "name": "amihud",
+    "category": "price_volume",
+    "hypothesis": "高非流动性=流动性溢价补偿",
+    "direction": 1,
+    "failure": "非流动性高可能是僵尸币",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 30
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "btc_beta": {
+    "name": "btc_beta",
+    "category": "relative_strength",
+    "hypothesis": "高beta=跟大盘无独立alpha",
+    "direction": -1,
+    "failure": "牛市高beta领涨",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 30
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  },
+  "idio_vol": {
+    "name": "idio_vol",
+    "category": "relative_strength",
+    "hypothesis": "高特质波动=彩票偏好被高估",
+    "direction": -1,
+    "failure": "高特质波动的强势币有独立行情",
+    "data_source": "5m K线(日线聚合)",
+    "params": {
+      "window": 30
+    },
+    "date": "2026-11-18",
+    "status": "candidate",
+    "metrics": {}
+  }
+}

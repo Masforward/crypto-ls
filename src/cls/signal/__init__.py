@@ -6,14 +6,22 @@
   compute_scores —— 流水线：输入因子 + 币种 + 时间，输出分数表（时间 × 币种）
 """
 from .factor import (
+    Amihud,
     Amplitude7d,
+    BtcBeta,
     Factor,
+    IdioVol,
+    IntradayRangePos,
     MaxDailyGain,
     Momentum7d,
     OneDayReversal,
+    OvernightReturn,
+    RealizedSkew30d,
     ReturnSkew7d,
     TakerBuyRatio,
+    UpDownVolRatio,
     Volatility7d,
+    VolPriceCorr,
     VolumeSurge,
 )
 from .pipeline import compute_scores
@@ -30,6 +38,14 @@ __all__ = [
     "MaxDailyGain",
     "Amplitude7d",
     "ReturnSkew7d",
+    "OvernightReturn",
+    "IntradayRangePos",
+    "RealizedSkew30d",
+    "UpDownVolRatio",
+    "VolPriceCorr",
+    "Amihud",
+    "BtcBeta",
+    "IdioVol",
     "compute_scores",
     "preprocess",
     "generate_report",
