@@ -7,7 +7,8 @@ data:
   symbols: 0              # 币种数（0 = 全部 2025 年初已上市的币）
 
 compose:
-  method: icir_weighted     # equal_weight / ic_weighted / icir_weighted
+  method: icir_weighted     # 必做: equal_weight / ic_weighted / icir_weighted
+                          # 选做: max_composite_icir / decorrelated_equal_weight
   lookback: 60            # 回看窗口 N 期（用过去多少期 IC 算权重）
   holdback: 2             # 时点滞后（t 时刻只用 < t-holdback 的 IC）
   allow_negative: false   # 是否允许负权重
@@ -15,7 +16,8 @@ compose:
   min_factors: 2          # 有效因子数下限
 
 portfolio:
-  method: quantile_long_short   # quantile_long_short / score_weighted / inverse_vol
+  method: score_weighted   # 必做: quantile_long_short / score_weighted / inverse_vol
+                                # 选做: mean_variance（均值方差，配合 ic_coef）
   long_short_frac: 0.2    # 分位多空比例（前/后 20%）
   gross: 1.0              # 总杠杆上限
   max_weight: 0.05        # 单币权重上限
@@ -23,6 +25,8 @@ portfolio:
   dollar_neutral: true    # 美元中性
   liquidity_frac: 0.01    # 单币持仓金额 ≤ 日均成交额 × 此比例
   capital: 1000000        # 资金规模
+  # beta_neutral: true    # 选做：组合对 BTC 的 beta 中性（破坏美元中性，优先 beta）
+  # ic_coef: 0.05         # 选做：均值方差的经验 IC 系数
 
 rebalance:
   rebalance_freq: 1       # 调仓频率（每 1/3/5 天）
