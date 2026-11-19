@@ -44,11 +44,13 @@ def residual_rankic(score, close_panel, admitted_scores):
     """
     fwd = compute_forward_returns(close_panel, 1)
     resid = score.copy()
+    # 已准入因子对齐到本因子的时间轴（时间索引不同起点时缺失填 NaN）
+    admitted_aligned = {n: s.reindex(score.index) for n, s in admitted_scores.items()}
     for t in score.index:
         y = score.loc[t]
-        if not admitted_scores:
+        if not admitted_aligned:
             continue
-        X = pd.DataFrame({n: s.loc[t] for n, s in admitted_scores.items()})
+        X = pd.DataFrame({n: s.loc[t] for n, s in admitted_aligned.items()})
         valid = y.notna() & X.notna().all(axis=1) & fwd.loc[t].notna()
         if valid.sum() < 3:
             continue
@@ -78,12 +80,16 @@ def admission_check(eval_result, corr_to_admitted=0.0, thresholds=THRESHOLDS):
     return (len(reasons) == 0, reasons)
 
 
-def run_admission(scores, close_panel, raw_scores=None, thresholds=THRESHOLDS):
+def run_admission(scores, close_panel, raw_scores=None, thresholds=THRESHOLDS,
+                  initial_admitted=None):
     """完整准入流程：按顺序评价 → 增量检验 → 门槛，返回结果表和准入名单。
 
-    返回 (结果 DataFrame, 准入因子名列表)。
+    initial_admitted : 已准入因子的分数表 {name: score}，作为增量检验的基准
+                       （例如第三周已准入的 8 个因子）。
+    返回 (结果 DataFrame, 新准入因子名列表)。
     """
-    admitted = {}   # 已准入因子分数表（增量检验的基准）
+    admitted = dict(initial_admitted or {})   # 已准入因子分数表（增量检验的基准）
+    initial_names = set(admitted.keys())
     rows = []
     for name, score in scores.items():
         raw = raw_scores.get(name) if raw_scores else None
@@ -107,7 +113,8 @@ def run_admission(scores, close_panel, raw_scores=None, thresholds=THRESHOLDS):
         })
         if ok:
             admitted[name] = score
-    return pd.DataFrame(rows), list(admitted.keys())
+    new_admitted = [n for n in admitted if n not in initial_names]
+    return pd.DataFrame(rows), new_admitted
 
 
 def _cross_corr(a, b):

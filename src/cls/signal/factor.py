@@ -200,10 +200,11 @@ class RealizedSkew30d(Factor):
 
 
 class UpDownVolRatio(Factor):
-    """上下行波动比：上行收益波动 ÷ 下行收益波动（上行波动大=动能强，越高越看多）。"""
+    """上下行波动比：上行收益波动 ÷ 下行收益波动（上行波动大=追涨过热，越高越看空）。"""
 
     name = "updown_vol_ratio"
     history = 31
+    direction = -1
 
     def compute(self, df):
         closes = df["close"].values
@@ -221,10 +222,11 @@ class UpDownVolRatio(Factor):
 
 
 class VolPriceCorr(Factor):
-    """量价相关：日收益与成交额变化率的相关（量价同向=健康，越高越看多）。"""
+    """量价相关：日收益与成交额变化率的相关（量价相关高=追涨情绪过热，越高越看空）。"""
 
     name = "vol_price_corr"
     history = 31
+    direction = -1
 
     def compute(self, df):
         closes = df["close"].values

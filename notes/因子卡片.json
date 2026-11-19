@@ -7,7 +7,7 @@
     "failure": "跳空是过度反应，开盘后回补",
     "data_source": "5m K线(日线聚合)",
     "params": {
-      "window": 1
+      "window": 30
     },
     "date": "2026-11-18",
     "status": "candidate",
@@ -21,7 +21,7 @@
     "failure": "尾盘拉高是诱多，次日低开",
     "data_source": "5m K线(日线聚合)",
     "params": {
-      "window": 1
+      "window": 30
     },
     "date": "2026-11-18",
     "status": "candidate",
@@ -44,9 +44,9 @@
   "updown_vol_ratio": {
     "name": "updown_vol_ratio",
     "category": "hf_aggregation",
-    "hypothesis": "上行波动大=资金追捧、动能强",
-    "direction": 1,
-    "failure": "上行波动大是冲高回落前兆",
+    "hypothesis": "上行波动大=追涨过热，越高越看空",
+    "direction": -1,
+    "failure": "上行波动大是真实动能",
     "data_source": "5m K线(日线聚合)",
     "params": {
       "window": 30
@@ -58,9 +58,9 @@
   "vol_price_corr": {
     "name": "vol_price_corr",
     "category": "price_volume",
-    "hypothesis": "量价同向=健康上涨",
-    "direction": 1,
-    "failure": "放量上涨是拉高出货",
+    "hypothesis": "量价相关高=追涨情绪过热，越高越看空",
+    "direction": -1,
+    "failure": "量价同向是健康上涨",
     "data_source": "5m K线(日线聚合)",
     "params": {
       "window": 30
